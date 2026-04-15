@@ -17,8 +17,8 @@ export ANTHROPIC_API_KEY=sk-ant-...
 Copy the printed `AGENT_ID` and `ENVIRONMENT_ID` into repo variables:
 
 ```bash
-gh variable set AGENT_ID       --body <id> --repo BLANXLAIT/github-brain
-gh variable set ENVIRONMENT_ID --body <id> --repo BLANXLAIT/github-brain
+gh variable set AGENT_ID       --body <id> --repo niemesrw/github-brain
+gh variable set ENVIRONMENT_ID --body <id> --repo niemesrw/github-brain
 ```
 
 The deploy workflow reads these at CDK synth time and bakes them into the Lambda environment.

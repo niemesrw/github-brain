@@ -48,6 +48,8 @@ One-time steps to bring this up from scratch.
 
 ### 1. Create the Managed Agent + Environment
 
+Grab an Anthropic API key from the console (the same place the [agent quickstart](https://platform.claude.com/workspaces/default/agent-quickstart) lives if you'd rather click through a UI), then run the setup script:
+
 ```bash
 export ANTHROPIC_API_KEY=sk-ant-...
 ./agent/setup.sh
@@ -56,10 +58,10 @@ export ANTHROPIC_API_KEY=sk-ant-...
 Save the printed IDs as GitHub repo variables (not secrets):
 
 ```bash
-gh variable set AGENT_ID       --body <id> --repo BLANXLAIT/github-brain
-gh variable set ENVIRONMENT_ID --body <id> --repo BLANXLAIT/github-brain
-gh variable set GH_APP_ID      --body <app id>       --repo BLANXLAIT/github-brain
-gh variable set GH_INSTALLATION_ID_OPENBRAIN --body <installation id> --repo BLANXLAIT/github-brain
+gh variable set AGENT_ID       --body <id> --repo niemesrw/github-brain
+gh variable set ENVIRONMENT_ID --body <id> --repo niemesrw/github-brain
+gh variable set GH_APP_ID      --body <app id>       --repo niemesrw/github-brain
+gh variable set GH_INSTALLATION_ID_OPENBRAIN --body <installation id> --repo niemesrw/github-brain
 ```
 
 ### 2. Deploy the stack
