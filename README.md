@@ -48,17 +48,18 @@ One-time steps to bring this up from scratch.
 
 ### 1. Create the Managed Agent + Environment
 
-Use the Claude console quickstart: https://platform.claude.com/workspaces/default/agent-quickstart
+```bash
+export ANTHROPIC_API_KEY=sk-ant-...
+./agent/setup.sh
+```
 
-Paste the system prompt from [`agent/system-prompt.md`](./agent/system-prompt.md), pick `claude-sonnet-4-6`, enable the default agent toolset, and create a cloud environment with unrestricted networking.
-
-Save the resulting IDs as GitHub repo variables (not secrets):
+Save the printed IDs as GitHub repo variables (not secrets):
 
 ```bash
-gh variable set AGENT_ID       --body <id> --repo niemesrw/github-brain
-gh variable set ENVIRONMENT_ID --body <id> --repo niemesrw/github-brain
-gh variable set GH_APP_ID      --body <app id>       --repo niemesrw/github-brain
-gh variable set GH_INSTALLATION_ID_OPENBRAIN --body <installation id> --repo niemesrw/github-brain
+gh variable set AGENT_ID       --body <id> --repo BLANXLAIT/github-brain
+gh variable set ENVIRONMENT_ID --body <id> --repo BLANXLAIT/github-brain
+gh variable set GH_APP_ID      --body <app id>       --repo BLANXLAIT/github-brain
+gh variable set GH_INSTALLATION_ID_OPENBRAIN --body <installation id> --repo BLANXLAIT/github-brain
 ```
 
 ### 2. Deploy the stack
