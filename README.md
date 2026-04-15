@@ -22,11 +22,12 @@ API Gateway ──▶ Lambda (HMAC verify + event filter)
 
 ## Status
 
-Ship #1 in progress: **Dependabot patch auto-merge** on `niemesrw/openbrain`.
-Scope is deliberately tiny — one repo, one event shape — so the architecture gets proven before scope widens.
+**Shipped:**
+- Dependabot patch auto-merge — patch bumps on green CI merge automatically; everything else is flagged for human review.
+- Issue triage — new issues are classified (`bug` / `enhancement` / `question` / `needs-info` / `spam`), labeled accordingly, and small, non-sensitive ones additionally tagged `claude` for Claude Code Action to pick up.
 
-Later ships (not yet built):
-- Event-driven issue triage + PR review
+**Later ships (not yet built):**
+- PR review for non-Dependabot PRs
 - Repo bootstrapping PRs (missing `claude.yml` / `CLAUDE.md`)
 - Release notes drafting
 
@@ -107,7 +108,7 @@ Settings:
   - Issues: Read & Write
   - Contents: Read-only
   - Metadata: Read-only (auto)
-- **Subscribe to events**: `Pull request`, `Check suite`
+- **Subscribe to events**: `Pull request`, `Check suite`, `Issues`
 - **Where can this App be installed**: Only on this account
 
 After creation:
@@ -119,6 +120,16 @@ After creation:
 ```bash
 gh variable set GH_APP_ID      --body <app id>          --repo niemesrw/github-brain
 gh variable set GH_INSTALLATION_ID_OPENBRAIN --body <installation id> --repo niemesrw/github-brain
+```
+
+### 5. (On prompt changes) push the new system prompt to the Managed Agent
+
+The system prompt lives with Anthropic, so editing `agent/system-prompt.md` isn't enough — you need to PATCH the agent. Run this whenever you change the prompt:
+
+```bash
+export ANTHROPIC_API_KEY=sk-ant-...
+export AGENT_ID=$(gh variable list --repo niemesrw/github-brain --json name,value --jq '.[] | select(.name=="AGENT_ID") | .value')
+./agent/update.sh
 ```
 
 ## Observability

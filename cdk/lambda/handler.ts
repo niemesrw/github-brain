@@ -25,7 +25,115 @@ function verifySignature(body: string, header: string | undefined, secret: strin
 }
 
 const ALLOWED_REPO = "niemesrw/openbrain";
-const INTERESTING_EVENTS = new Set(["pull_request", "check_suite"]);
+const INTERESTING_EVENTS = new Set(["pull_request", "check_suite", "issues"]);
+
+type Task =
+  | {
+      kind: "dependabot-pr";
+      repo: string;
+      prNumber: number;
+      prTitle: string;
+      headBranch: string;
+      author: string;
+      action: string;
+    }
+  | {
+      kind: "issue-triage";
+      repo: string;
+      issueNumber: number;
+      issueTitle: string;
+      issueBody: string;
+      author: string;
+      action: string;
+    };
+
+function classify(eventName: string, payload: any): Task | { skip: string } {
+  const repo: string | undefined = payload.repository?.full_name;
+  if (repo !== ALLOWED_REPO) return { skip: "repo not in allowlist" };
+
+  if (eventName === "issues") {
+    if (payload.action !== "opened" && payload.action !== "reopened") {
+      return { skip: `issues action ${payload.action} not handled` };
+    }
+    const issue = payload.issue;
+    if (!issue) return { skip: "no issue in payload" };
+    if (issue.pull_request) return { skip: "issue is actually a PR" };
+    return {
+      kind: "issue-triage",
+      repo,
+      issueNumber: issue.number,
+      issueTitle: issue.title ?? "",
+      issueBody: issue.body ?? "",
+      author: issue.user?.login ?? "unknown",
+      action: payload.action,
+    };
+  }
+
+  // pull_request or check_suite → Dependabot patch-merge path
+  const pr = payload.pull_request ?? payload.check_suite?.pull_requests?.[0];
+  const prAuthor: string | undefined = payload.pull_request?.user?.login;
+  const headBranch: string | undefined =
+    payload.pull_request?.head?.ref ?? payload.check_suite?.head_branch;
+  const isDependabot = prAuthor === "dependabot[bot]" || headBranch?.startsWith("dependabot/");
+  if (!isDependabot) return { skip: "not dependabot" };
+  if (!pr?.number) return { skip: "no PR number on payload" };
+  return {
+    kind: "dependabot-pr",
+    repo,
+    prNumber: pr.number,
+    prTitle: pr.title ?? payload.pull_request?.title ?? "",
+    headBranch: headBranch ?? "",
+    author: prAuthor ?? "dependabot[bot]",
+    action: payload.action ?? "n/a",
+  };
+}
+
+function buildPrompt(task: Task, token: string): string {
+  const preamble = [
+    `A short-lived GitHub installation token is provided below. Export it as GH_TOKEN and use the \`gh\` CLI.`,
+    `GH_TOKEN=${token}`,
+    ``,
+  ];
+
+  if (task.kind === "dependabot-pr") {
+    return [
+      `TASK: dependabot-pr`,
+      `Repository: ${task.repo}`,
+      `PR number: ${task.prNumber}`,
+      `PR title: ${task.prTitle}`,
+      `Head branch: ${task.headBranch}`,
+      `Author: ${task.author}`,
+      `Event action: ${task.action}`,
+      ``,
+      ...preamble,
+      `Follow the "Task: dependabot-pr" rules in your system prompt.`,
+    ].join("\n");
+  }
+
+  return [
+    `TASK: issue-triage`,
+    `Repository: ${task.repo}`,
+    `Issue number: ${task.issueNumber}`,
+    `Issue title: ${task.issueTitle}`,
+    `Author: ${task.author}`,
+    `Event action: ${task.action}`,
+    ``,
+    `Issue body:`,
+    `---`,
+    task.issueBody.slice(0, 8000),
+    `---`,
+    ``,
+    ...preamble,
+    `Follow the "Task: issue-triage" rules in your system prompt.`,
+  ].join("\n");
+}
+
+function titleFor(task: Task): string {
+  if (task.kind === "dependabot-pr") {
+    return `dependabot-pr: ${task.repo}#${task.prNumber}`;
+  }
+  return `issue-triage: ${task.repo}#${task.issueNumber}`;
+}
 
 export async function handler(event: APIGatewayProxyEventV2): Promise<APIGatewayProxyResultV2> {
   const body = event.body ?? "";
@@ -46,27 +154,15 @@ export async function handler(event: APIGatewayProxyEventV2): Promise<APIGateway
   }
 
   const payload = JSON.parse(body);
-  const repo: string | undefined = payload.repository?.full_name;
-  if (repo !== ALLOWED_REPO) {
-    console.log("ignored: repo not in allowlist", { deliveryId, eventName, repo });
-    return { statusCode: 200, body: "ignored: repo not in allowlist" };
+  const decision = classify(eventName, payload);
+  if ("skip" in decision) {
+    console.log("ignored", { deliveryId, eventName, reason: decision.skip });
+    return { statusCode: 200, body: `ignored: ${decision.skip}` };
   }
-
-  const pr = payload.pull_request ?? payload.check_suite?.pull_requests?.[0];
-  const prAuthor: string | undefined = payload.pull_request?.user?.login;
-  const headBranch: string | undefined =
-    payload.pull_request?.head?.ref ?? payload.check_suite?.head_branch;
-  const isDependabot = prAuthor === "dependabot[bot]" || headBranch?.startsWith("dependabot/");
-  if (!isDependabot) {
-    console.log("ignored: not dependabot", { deliveryId, eventName, repo, prAuthor, headBranch });
-    return { statusCode: 200, body: "ignored: not dependabot" };
-  }
+  const task = decision;
 
   const privateKey = await getSecret(process.env.APP_PRIVATE_KEY_ARN!);
-  const auth = createAppAuth({
-    appId: process.env.GH_APP_ID!,
-    privateKey,
-  });
+  const auth = createAppAuth({ appId: process.env.GH_APP_ID!, privateKey });
   const { token } = await auth({
     type: "installation",
     installationId: Number(process.env.GH_INSTALLATION_ID_OPENBRAIN!),
@@ -86,7 +182,7 @@ export async function handler(event: APIGatewayProxyEventV2): Promise<APIGateway
     body: JSON.stringify({
       agent: process.env.AGENT_ID,
       environment_id: process.env.ENVIRONMENT_ID,
-      title: `${eventName} ${payload.action ?? ""}: ${repo}#${pr?.number ?? "?"}`,
+      title: titleFor(task),
     }),
   });
   if (!sessionRes.ok) {
@@ -95,30 +191,15 @@ export async function handler(event: APIGatewayProxyEventV2): Promise<APIGateway
   }
   const session = (await sessionRes.json()) as { id: string };
 
-  const prompt = [
-    `GitHub event: ${eventName} (action: ${payload.action ?? "n/a"})`,
-    `Repository: ${repo}`,
-    `PR number: ${pr?.number ?? "unknown"}`,
-    `PR title: ${pr?.title ?? "unknown"}`,
-    `Head branch: ${headBranch ?? "unknown"}`,
-    `Author: ${prAuthor ?? "unknown"}`,
-    ``,
-    `A short-lived GitHub installation token is provided below. Export it as GH_TOKEN and use the \`gh\` CLI to inspect and act on the PR.`,
-    `GH_TOKEN=${token}`,
-    ``,
-    `Your job: decide whether this is a Dependabot patch bump (e.g. 1.2.3 → 1.2.4) on green CI.`,
-    `- If yes: merge it with \`gh pr merge\` using the squash strategy and capture the decision to Open Brain.`,
-    `- If minor, major, or CI is not green: leave a single comment on the PR flagging it for human review, and do NOT merge.`,
-    `When done, stop — no further action needed.`,
-  ].join("\n");
-
   const eventRes = await fetch(
     `https://api.anthropic.com/v1/sessions/${session.id}/events`,
     {
       method: "POST",
       headers: anthropicHeaders,
       body: JSON.stringify({
-        events: [{ type: "user.message", content: [{ type: "text", text: prompt }] }],
+        events: [
+          { type: "user.message", content: [{ type: "text", text: buildPrompt(task, token) }] },
+        ],
       }),
     }
   );
@@ -129,8 +210,9 @@ export async function handler(event: APIGatewayProxyEventV2): Promise<APIGateway
 
   console.log("session dispatched", {
     session: session.id,
-    repo,
-    pr: pr?.number,
+    task: task.kind,
+    repo: task.repo,
+    ref: task.kind === "dependabot-pr" ? task.prNumber : task.issueNumber,
     deliveryId,
   });
   return { statusCode: 202, body: JSON.stringify({ session: session.id }) };
