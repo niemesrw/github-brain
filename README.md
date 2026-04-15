@@ -121,6 +121,23 @@ gh variable set GH_APP_ID      --body <app id>          --repo niemesrw/github-b
 gh variable set GH_INSTALLATION_ID_OPENBRAIN --body <installation id> --repo niemesrw/github-brain
 ```
 
+## Observability
+
+**Lambda logs** (every webhook, including filtered-out deliveries):
+
+```bash
+FN=$(aws lambda list-functions --profile blanxlait-ai --region us-east-1 \
+  --query "Functions[?starts_with(FunctionName, 'GithubBrainWebhook')].FunctionName | [0]" \
+  --output text)
+aws logs tail /aws/lambda/$FN --follow --profile blanxlait-ai --region us-east-1
+```
+
+Every delivery emits one line — either a dispatch (`session dispatched`) or a filter reason (`ignored: not dependabot`, `ignored: repo not in allowlist`, etc.) — with the GitHub delivery ID so you can cross-reference against the App's "Recent Deliveries" tab.
+
+**Managed Agent sessions**: visible in the Claude console at https://platform.claude.com/workspaces/default/sessions. Each dispatch creates a session titled `<event> <action>: <repo>#<pr>`.
+
+**App-side deliveries**: https://github.com/settings/apps/gh-brain/advanced — full request/response history with replay button.
+
 ## Security notes
 
 - The Lambda includes a short-lived installation token (~1 hour TTL) in the user-message body sent to the Managed Agent. Session events are stored server-side by Anthropic. The token is scoped to one installation and one event, and auto-expires. For v1 this tradeoff is acceptable. A later ship can replace this with an MCP server that mints tokens on demand so the token never crosses the boundary.
