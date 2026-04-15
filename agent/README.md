@@ -1,32 +1,36 @@
 # agent
 
-Managed Agent definition — the system prompt and a one-time setup script.
+Managed Agent definition — just the system prompt.
 
 ## Files
 
-- **`system-prompt.md`** — the agent's system prompt. Decision rules, guardrails, and the `RESULT:` reporting contract.
-- **`setup.sh`** — one-time: creates the Managed Agent and Environment via the Anthropic API and prints their IDs.
+- **`system-prompt.md`** — decision rules, guardrails, and the `RESULT:` reporting contract.
 
 ## Setup (one time)
 
+Create the agent and environment in the Claude console:
+
+👉 https://platform.claude.com/workspaces/default/agent-quickstart
+
+Settings:
+
+- **Agent name**: `github-brain`
+- **Model**: `claude-sonnet-4-6`
+- **System prompt**: paste contents of [`system-prompt.md`](./system-prompt.md)
+- **Tools**: enable the default agent toolset (`agent_toolset_20260401` — bash, file ops, web)
+- **Environment**: cloud, networking `unrestricted`
+
+Copy the Agent ID and Environment ID, then set them as GitHub repo variables:
+
 ```bash
-export ANTHROPIC_API_KEY=sk-ant-...
-./agent/setup.sh
+gh variable set AGENT_ID       --body <id> --repo niemesrw/github-brain
+gh variable set ENVIRONMENT_ID --body <id> --repo niemesrw/github-brain
 ```
-
-Copy the printed `AGENT_ID` and `ENVIRONMENT_ID` into repo variables:
-
-```bash
-gh variable set AGENT_ID       --body <id> --repo BLANXLAIT/github-brain
-gh variable set ENVIRONMENT_ID --body <id> --repo BLANXLAIT/github-brain
-```
-
-The deploy workflow reads these at CDK synth time and bakes them into the Lambda environment.
 
 ## Updating the system prompt
 
-Managed Agents are versioned. To update the prompt, re-create the agent (or use the update API) and update the `AGENT_ID` variable.
+Managed Agents are versioned. Edit in the console (or via API) and update `AGENT_ID` if a new version creates a new ID.
 
 ## Scope (v1)
 
-The agent handles one event per session. The Lambda dispatches only Dependabot PR activity on `niemesrw/openbrain` — everything else is filtered out before the session is created. See `../cdk/lambda/handler.ts`.
+One event per session. The Lambda dispatches only Dependabot PR activity on `niemesrw/openbrain` — see `../cdk/lambda/handler.ts`.
