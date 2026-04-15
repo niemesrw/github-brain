@@ -8,9 +8,10 @@ const sm = new SecretsManagerClient({});
 const ddb = new DynamoDBClient({});
 const secretCache = new Map<string, string>();
 
-const DEDUPE_TTL_SECONDS = 7 * 24 * 60 * 60;
+const DELIVERY_TTL_SECONDS = 7 * 24 * 60 * 60; // exact-retry window
+const TASK_TTL_SECONDS = 10 * 60; // burst-protection window per (repo, kind, ref)
 
-async function markDelivery(deliveryId: string): Promise<boolean> {
+async function markOnce(key: string, ttlSeconds: number): Promise<boolean> {
   const table = process.env.DEDUPE_TABLE;
   if (!table) return true;
   try {
@@ -18,8 +19,8 @@ async function markDelivery(deliveryId: string): Promise<boolean> {
       new PutItemCommand({
         TableName: table,
         Item: {
-          deliveryId: { S: deliveryId },
-          ttl: { N: String(Math.floor(Date.now() / 1000) + DEDUPE_TTL_SECONDS) },
+          deliveryId: { S: key },
+          ttl: { N: String(Math.floor(Date.now() / 1000) + ttlSeconds) },
         },
         ConditionExpression: "attribute_not_exists(deliveryId)",
       })
@@ -29,6 +30,13 @@ async function markDelivery(deliveryId: string): Promise<boolean> {
     if (err?.name === "ConditionalCheckFailedException") return false;
     throw err;
   }
+}
+
+function taskKey(task: Task): string {
+  if (task.kind === "dependabot-pr") {
+    return `task:${task.repo}:${task.kind}:${task.prNumber}`;
+  }
+  return `task:${task.repo}:${task.kind}:${task.issueNumber}`;
 }
 
 async function getSecret(arn: string): Promise<string> {
@@ -186,9 +194,17 @@ export async function handler(event: APIGatewayProxyEventV2): Promise<APIGateway
   }
   const task = decision;
 
-  if (deliveryId && !(await markDelivery(deliveryId))) {
+  if (deliveryId && !(await markOnce(`delivery:${deliveryId}`, DELIVERY_TTL_SECONDS))) {
     console.log("ignored: duplicate delivery", { deliveryId, eventName });
     return { statusCode: 200, body: "ignored: duplicate delivery" };
+  }
+
+  if (!(await markOnce(taskKey(task), TASK_TTL_SECONDS))) {
+    console.log("ignored: recent session for this task", {
+      deliveryId,
+      key: taskKey(task),
+    });
+    return { statusCode: 200, body: "ignored: recent session for this task" };
   }
 
   const [privateKey, anthropicKey] = await Promise.all([
