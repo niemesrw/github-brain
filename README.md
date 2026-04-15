@@ -80,7 +80,7 @@ aws secretsmanager put-secret-value \
 
 aws secretsmanager put-secret-value \
   --secret-id github-brain/app-private-key \
-  --secret-string file://blanxlait-agent-manager.pem \
+  --secret-string file://gh-brain.pem \
   --profile blanxlait-ai
 
 aws secretsmanager put-secret-value \
@@ -89,13 +89,37 @@ aws secretsmanager put-secret-value \
   --profile blanxlait-ai
 ```
 
-### 4. Configure the GitHub App webhook
+### 4. Create + configure the GitHub App
 
-In the `blanxlait-agent-manager` App settings:
+Create a new GitHub App under your personal account (not an org — any personal account can create Apps):
 
+👉 https://github.com/settings/apps/new
+
+Settings:
+
+- **Name**: `gh-brain` (GitHub reserves the `github-` prefix for App slugs, so the repo is `github-brain` but the App slug can't start with that)
+- **Homepage URL**: `https://github.com/niemesrw/github-brain`
 - **Webhook URL**: `<WebhookUrl output from the CDK stack>`
 - **Webhook secret**: same value you put into `github-brain/webhook-secret`
-- **Events**: subscribe to `Pull requests` and `Check suites`
+- **Permissions** (repository):
+  - Pull requests: Read & Write
+  - Checks: Read-only
+  - Issues: Read & Write
+  - Contents: Read-only
+  - Metadata: Read-only (auto)
+- **Subscribe to events**: `Pull request`, `Check suite`
+- **Where can this App be installed**: Only on this account
+
+After creation:
+
+1. Generate a private key (download the `.pem`) — this goes into `github-brain/app-private-key`.
+2. Install the App on `niemesrw/openbrain`.
+3. Grab the **App ID** (top of the App settings page) and the **installation ID** (in the URL when you click into the installation). Set both as repo variables:
+
+```bash
+gh variable set GH_APP_ID      --body <app id>          --repo niemesrw/github-brain
+gh variable set GH_INSTALLATION_ID_OPENBRAIN --body <installation id> --repo niemesrw/github-brain
+```
 
 ## Security notes
 
